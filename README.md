@@ -17,6 +17,7 @@
 - **只读请求**：全部接口均为只读 `GET`，不消耗任何模型额度
 - **凭据不出本机**：API Key 用 Android Keystore（AES-256-GCM）加密存储，不经过任何第三方服务器
 - **无需账号体系**：不注册、不上传、无埋点
+- **接不上的站点能自己接**：内置 7 类平台，另有「自定义查询」支持自填接口与解析规则
 
 界面采用 **Monet 2026 配色**与 **iOS26 Liquid Glass 液态玻璃**设计语言，深度适配 OnePlus 15（6.78" / 2772×1272 / 450PPI）。
 
@@ -27,13 +28,38 @@
 ### 📊 多厂商额度聚合
 首页以卡片展示各账户的**余额 / 状态 / 品牌图标**，异常（透支、查询失败）自动高亮。
 
-| 厂商 | 余额 | 模型定价 | 调用记录 | 实现方式 |
-|---|:---:|:---:|:---:|---|
-| **DeepSeek 官方** | ✓ | — | — | 官方接口 `GET /user/balance`（Bearer `sk-`） |
-| **New API / One API 中转站** | ✓ | ✓ | ✓ | `<baseUrl>/api/user/self`（账户余额）→ 回退 billing；`/api/pricing` 读倍率；`/api/log/token` 读调用记录 |
-| **智谱 BigModel** | ✓ | — | — | 内置 WebView 登录后注入脚本抓取页面（官方无公开余额接口） |
-| **Kimi / Moonshot** | ✓ | ✓ | — | 开放平台余额接口 + `/v1/models` |
-| **OpenRouter** | ✓ | ✓ | — | Credits 余额 + 公开模型列表（含每百万 token 价格） |
+| 厂商 | 余额 | 模型定价 | 调用记录 | 币种 | 实现方式 |
+|---|:---:|:---:|:---:|:---:|---|
+| **DeepSeek 官方** | ✓ | — | — | CNY | 官方接口 `GET /user/balance`（Bearer `sk-`） |
+| **New API / One API 中转站** | ✓ | ✓ | ✓ | USD | `<baseUrl>/api/user/self`（账户余额）→ 回退 billing；`/api/pricing` 读倍率；`/api/log/token` 读调用记录 |
+| **智谱 BigModel** | ✓ | — | — | CNY | 内置 WebView 登录后注入脚本抓取页面（官方无公开余额接口） |
+| **Kimi / Moonshot** | ✓ | ✓ | — | CNY | 开放平台余额接口 + `/v1/models` |
+| **OpenRouter** | ✓ | ✓ | — | USD | Credits 余额 + 公开模型列表（含每百万 token 价格） |
+| **阶跃星辰 StepFun** | ✓ | ✓ | — | CNY | `GET /v1/accounts`（含现金 / 赠券明细）+ `/v1/models` |
+| **自定义查询** | ✓ | 尽力探测 | — | 自选 | 自填接口地址 + 三选一解析规则 |
+
+### 🧩 自定义查询（接任意站点）
+
+内置平台名单之外的站点，用「自定义查询」自己接线。三种解析器按站点能力选：
+
+| 模式 | 行为 | 适用场景 |
+|---|---|---|
+| **OpenAI / One API 兼容** | 复用 New API 双通道（`/api/user/self` → billing） | 标准中转站 |
+| **JSON 字段路径** | 取 JSON 字段，**支持数组下标**（`data.balance`、`balance_infos.0.total_balance`） | 绝大多数自建服务 |
+| **正则表达式提取** | 在响应文本里跑正则，有捕获组取第 1 组 | 返回网页 / 非 JSON 的站点 |
+
+- **站点地址自动推导**：只填余额接口地址即可，`https://api.x.com/v1/balance` → 自动识别站点根为 `https://api.x.com`
+- **赠送额度**：可另填「赠送额度字段路径」，自定义站也能显示「赠」额度并参与临期提醒
+- **编辑页按能力动态出字段**：选到哪个模式，就只出现该模式需要的输入框
+
+### 💱 按账户计价币种
+
+不同平台计价单位不同，阈值口径也应当不同：
+
+- 内置平台币种为常量表（DeepSeek / Kimi / 智谱 / StepFun = **CNY**，New API / OpenRouter = **USD**）
+- **New API 与自定义查询**可手动覆盖币种（站点既可能收人民币也可能收美元）
+- 低余额阈值留空时按币种取默认：**人民币站 ¥10 / 美元站 $1**
+- 通知文案按币种补符号
 
 ### 🔔 通知分级与灵动岛
 按「是否真的属于进行中事项」把通知分成两级，而不是一股脑全塞进灵动岛：
@@ -57,7 +83,7 @@
 
 ### 🎨 设计与安全
 - 设计系统单一来源（`ui/theme/Theme.kt` + `ui/components/Glass.kt`）
-- 各厂商使用**官方品牌图标**（Simple Icons，CC0）区分身份
+- 各厂商使用**官方品牌图标**（Simple Icons，CC0）区分身份；**靠图标形状 + 名称区分，不靠色相**
 - 密钥 AES-256-GCM 加密，密文格式 `enc1:<iv>:<ct>`，旧版明文自动迁移
 - 卡片原生支持**滑动删除**、**长按拖拽排序**
 
@@ -92,13 +118,26 @@
 
 ## 🧭 使用指南
 
-1. **添加账户**：首页「+」，选择厂商类型，填显示名称与凭据。
-   - DeepSeek / Kimi / OpenRouter：填 API Key 即可
+1. **添加账户**：首页「+」，选择平台类型，填显示名称与凭据。
+   - DeepSeek / Kimi / StepFun / OpenRouter：填 API Key 即可
    - New API 中转站：填 `Base URL` + `API Key`；建议再填「系统访问令牌」（站点 → 个人设置 → 生成系统访问令牌），这样即使站长关闭了 OpenAI 兼容 billing 路由也能读余额与日志
    - 智谱：点卡片进入 WebView，用账号登录一次，进「财务总览」后点「抓取」
+   - 自定义查询：填名称 + API Key + **余额接口地址**，再选解析规则（见下节）
 2. **查看详情**：点卡片进详情页，看余额大卡、套餐额度、模型定价与最近调用
 3. **管理账户**：滑动卡片删除、长按拖拽排序
-4. **设置阈值**：编辑账户时可自定义低余额告警阈值（留空则按币种默认：人民币站 ¥10 / 美元站 $1）
+4. **设置阈值与币种**：编辑账户时填低余额告警阈值（留空按币种默认），New API / 自定义查询还可切换计价币种
+
+### 接入一个自定义站点
+
+以某站点 `GET https://api.example.com/v1/balance` 返回 `{"data":{"balance":59.0}}` 为例：
+
+1. 平台类型选「自定义查询」
+2. 填 API Key
+3. 余额接口地址填完整 URL：`https://api.example.com/v1/balance`
+4. 解析规则选「JSON 字段路径」，余额字段路径填 `data.balance`
+   - 若返回是数组（如 `balance_infos`），用下标：`balance_infos.0.total_balance`
+5. 若该站还有赠送额度字段（如 `data.voucher`），填进「赠送额度字段路径」
+6. 若返回的不是 JSON 而是网页，改选「正则表达式提取」，填如 `¥([0-9.]+)`（有捕获组取第 1 组）
 
 ---
 
@@ -111,12 +150,20 @@
   - ⚠️ `quota` 本身就是**剩余额度**，不要再减 `used_quota`
   - ⚠️ 新版 New API 的 `/v1/dashboard/billing/subscription` 在部分版本已下线，App 已做双通道自动回退
   - ⚠️ 令牌"无限额度"时 billing 返回哨兵值 `hard_limit_usd = 100000000`，App 识别为不限额而非余额
+- `GET https://api.stepfun.com/v1/accounts` — StepFun 余额（含 `total_cash_balance` / `total_voucher_balance`）
 
 ---
 
 ## 🆕 版本更新
 
 各版本详细变更见 [CHANGELOG](./CHANGELOG.md)。
+
+#### v1.2.0 — 新增阶跃星辰 StepFun，支持自定义查询
+- 新增 **阶跃星辰 StepFun** 平台（含现金 / 赠券明细）
+- 新增 **自定义查询**：自填接口地址，三选一解析规则（兼容模式 / JSON 字段路径 / 正则）
+- 新增 **按账户计价币种**，阈值默认值随币种走（¥10 / $1）
+- 修复 `baseUrl` 被截断成 `https:` 的畸形 URL 问题
+- 修复 StepFun / 自定义站的赠送额度显示不出来
 
 #### v1.1.0 — 余额告警接入灵动岛
 - 通知分级：余额告警走 Android 16/17 **Live Updates 灵动岛**（带进度条）
