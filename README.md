@@ -2,7 +2,7 @@
 
 # 📊 Monitor · API 额度监控
 
-快速便捷地查看各厂商模型余额，并聚合市面上一些免费厂商模型的最新消息。
+聚合查看你在各家 AI 平台与 New API 中转站的账户余额、模型定价与调用记录。
 
 **Kotlin · Jetpack Compose · Material 3**
 
@@ -12,32 +12,54 @@
 
 ## 📖 项目简介
 
-**Monitor（API 额度监控）** 是一款面向 Android 的轻量工具应用，帮助开发者与用户**一站式管理多个 AI 厂商的 API 额度**，随时掌握各模型的余额与用量情况，并实时聚合市场上可用的**免费模型资源**，避免在多个控制台之间来回切换。
+**Monitor（API 额度监控）** 是一款**纯本地运行**的 Android 工具应用，帮助开发者一站式管理多个 AI 厂商的 API 额度，不必在多个控制台之间来回切换。
 
-应用深度适配 **OnePlus 15**（6.78 英寸 / 2772×1272 / 450PPI），全面采用 **Monet 2026 配色**与 **iOS26 Liquid Glass 液态玻璃**设计语言，兼顾功能与美学。
+- **只读请求**：全部接口均为只读 `GET`，不消耗任何模型额度
+- **凭据不出本机**：API Key 用 Android Keystore（AES-256-GCM）加密存储，不经过任何第三方服务器
+- **无需账号体系**：不注册、不上传、无埋点
+
+界面采用 **Monet 2026 配色**与 **iOS26 Liquid Glass 液态玻璃**设计语言，深度适配 OnePlus 15（6.78" / 2772×1272 / 450PPI）。
 
 ---
 
 ## ✨ 功能特性
 
-### 📊 额度查询
-- 多厂商实例统一管理，首页以信息卡片展示**作者 / 内容预览 / 状态 / 余额**
-- 支持点击进详情、滑动删除（可撤销）、长按拖拽排序（边缘自动滚动）
-- 额度详情页提供**大幅余额数字卡片 + 配额/套餐明细**
+### 📊 多厂商额度聚合
+首页以卡片展示各账户的**余额 / 状态 / 品牌图标**，异常（透支、查询失败）自动高亮。
 
-### 🤖 免费模型聚合
-- 国内 / 国际分区，免费模型卡片标注「注册即可用」与「直连可用」
-- 聚合来源：精选目录、OpenRouter、SiliconFlow、商汤 SenseNova、Google Gemini、Cohere、Cerebras、Together AI、OVHcloud 等
+| 厂商 | 余额 | 模型定价 | 调用记录 | 实现方式 |
+|---|:---:|:---:|:---:|---|
+| **DeepSeek 官方** | ✓ | — | — | 官方接口 `GET /user/balance`（Bearer `sk-`） |
+| **New API / One API 中转站** | ✓ | ✓ | ✓ | `<baseUrl>/api/user/self`（账户余额）→ 回退 billing；`/api/pricing` 读倍率；`/api/log/token` 读调用记录 |
+| **智谱 BigModel** | ✓ | — | — | 内置 WebView 登录后注入脚本抓取页面（官方无公开余额接口） |
+| **Kimi / Moonshot** | ✓ | ✓ | — | 开放平台余额接口 + `/v1/models` |
+| **OpenRouter** | ✓ | ✓ | — | Credits 余额 + 公开模型列表（含每百万 token 价格） |
+
+### 🔔 通知分级与灵动岛
+按「是否真的属于进行中事项」把通知分成两级，而不是一股脑全塞进灵动岛：
+
+| 级别 | 场景 | 做法 |
+|---|---|---|
+| **Live Updates** | 余额跌破阈值 | `ProgressStyle` 进度条 + ongoing，接入 **Android 16/17 灵动岛**（锁屏 / 状态栏胶囊） |
+| **普通通知** | 套餐临期、模型上新 | 标准高优先级通知，不请求提升 |
+
+- 进度语义：跌破阈值 = 100%（刚开始危险），彻底耗尽 = 0%（进度条走完）
+- 余额回升到阈值 1.2 倍以上（充过值了）自动撤销常驻告警
+
+### ⏱️ 定时刷新
+- **15 分钟**自动刷新（前台定时器 + 后台 WorkManager 共用同一周期常量）
+- 「上次同步时间」持久化落盘，**跨进程重启、跨覆盖升级**都继续走定时，不会每次冷启动都打一遍接口
+- 手动「刷新」按钮可绕过周期立即执行
 
 ### 🧩 桌面小组件
-- 支持多尺寸（含 4×2 紧凑布局），统一深蓝渐变主题
-- 多厂商数据一键同步刷新
+- 常驻显示各账户余额快照，由后台任务周期性喷新数据
+- 点击直达 App
 
-### ⚙️ 系统能力
-- **12 小时自动刷新** + 余额阈值告警通知
-- 前台刷新器 + 后台 Worker 并行刷新，单实例异常不拖慢整体
-- 安全密钥存储，保护 API Key
-- **TLS 指纹 (WAF) 穿透**：自动处理部分 API 服务器对 OkHttp 的拦截，保障直连可用
+### 🎨 设计与安全
+- 设计系统单一来源（`ui/theme/Theme.kt` + `ui/components/Glass.kt`）
+- 各厂商使用**官方品牌图标**（Simple Icons，CC0）区分身份
+- 密钥 AES-256-GCM 加密，密文格式 `enc1:<iv>:<ct>`，旧版明文自动迁移
+- 卡片原生支持**滑动删除**、**长按拖拽排序**
 
 ---
 
@@ -45,56 +67,68 @@
 
 | 类别 | 技术 |
 | ---- | ---- |
-| 语言 | Kotlin |
-| UI | Jetpack Compose、Material 3、Compose BOM 2024.12.01 |
-| 网络 | OkHttp 4.12.0、Kotlinx Serialization |
-| 后台 | WorkManager、前台服务刷新器 |
-| 组件 | 桌面小组件 (AppWidgetProvider) |
-| 最低版本 | Android 6.0 (API 23) |
-| 目标版本 | Android 15 (API 35) |
+| 语言 | Kotlin 2.0.21 |
+| UI | Jetpack Compose、Material 3、Compose BOM 2024.10.01 |
+| 网络 | OkHttp 4.12.0 |
+| 后台 | WorkManager 2.9.1 |
+| 存储 | SharedPreferences + AES-256-GCM（Android Keystore） |
+| 构建 | AGP 8.9.1 / Gradle 8.14.4 / compileSdk 36 |
+| 最低版本 | Android 8.0（API 26） |
+| 目标版本 | Android 15（API 35） |
+
+> 灵动岛（Live Updates）能力需要 **Android 16（API 36）+** 才生效；更低版本会自动降级为普通常驻通知。
 
 ---
 
 ## 📦 安装
 
-从 [Releases](../../releases) 页面下载最新 APK，传到手机后点击安装即可。
+从 [Releases](../../releases) 页面下载最新 APK，传到手机后点击安装。
 
 > ⚠️ 需要开启「允许安装未知来源应用」。
 
-**系统要求**：Android 6.0 及以上。
+**系统要求**：Android 8.0（API 26）及以上。
 
 ---
 
 ## 🧭 使用指南
 
-1. **添加实例**：点击首页右上角「+」，选择厂商类型，填写显示名称、API Key、Base URL 等信息。
-2. **查看额度**：点击任意实例卡片进入详情页，查看余额大卡与套餐明细。
-3. **管理实例**：滑动卡片可删除，长按卡片可拖拽排序。
-4. **免费模型**：切换到「免费 AI 模型」标签页，按国内 / 国际分区浏览可用免费模型。
+1. **添加账户**：首页「+」，选择厂商类型，填显示名称与凭据。
+   - DeepSeek / Kimi / OpenRouter：填 API Key 即可
+   - New API 中转站：填 `Base URL` + `API Key`；建议再填「系统访问令牌」（站点 → 个人设置 → 生成系统访问令牌），这样即使站长关闭了 OpenAI 兼容 billing 路由也能读余额与日志
+   - 智谱：点卡片进入 WebView，用账号登录一次，进「财务总览」后点「抓取」
+2. **查看详情**：点卡片进详情页，看余额大卡、套餐额度、模型定价与最近调用
+3. **管理账户**：滑动卡片删除、长按拖拽排序
+4. **设置阈值**：编辑账户时可自定义低余额告警阈值（留空则按币种默认：人民币站 ¥10 / 美元站 $1）
+
+---
+
+## 🔍 接口说明
+
+- `GET /api/pricing` — 模型定价（多数站点匿名可访问）
+- `GET /api/log/token`（`TokenAuthReadOnly`）— 用 `sk-` 查本 Key 调用记录
+- `GET /api/log/self`（`UserAuth`）— 用系统访问令牌查本人全部日志
+- `GET /api/user/self`（`UserAuth`）— `quota` / `used_quota`（**500000 quota = $1**，One API 系惯例）
+  - ⚠️ `quota` 本身就是**剩余额度**，不要再减 `used_quota`
+  - ⚠️ 新版 New API 的 `/v1/dashboard/billing/subscription` 在部分版本已下线，App 已做双通道自动回退
+  - ⚠️ 令牌"无限额度"时 billing 返回哨兵值 `hard_limit_usd = 100000000`，App 识别为不限额而非余额
 
 ---
 
 ## 🆕 版本更新
 
-各版本变更详情见 [CHANGELOG](./CHANGELOG.md)。
+各版本详细变更见 [CHANGELOG](./CHANGELOG.md)。
+
+#### v1.1.0 — 余额告警接入灵动岛
+- 通知分级：余额告警走 Android 16/17 **Live Updates 灵动岛**（带进度条）
+- 进入 App 不再立即刷新，改为**纯 15 分钟定时**（跨重启、跨升级保留）
+- 修复异常 / 偏低余额**反复通知**的 bug
+- 各厂商卡片换用**官方品牌图标**
+- 密钥存储升级为 AES-256-GCM + Android Keystore
 
 #### v1.0.0 — 初次发布
-- 完整的多厂商额度查询与余额告警
-- 国内 / 国际免费模型聚合
-- 桌面小组件与自动刷新
-- Monet 2026 + iOS26 Liquid Glass 全面视觉升级
-
----
-
-## 🧑‍💻 开发
-
-```bash
-# 克隆仓库
-git clone https://github.com/qiuqiu-fist/Monitor.git
-
-# 使用 Android Studio 打开 android-app 目录
-# 等待 Gradle 同步完成后即可构建运行
-```
+- 多厂商额度查询与余额告警
+- 桌面小组件与后台自动刷新
+- Monet 2026 + iOS26 Liquid Glass 视觉体系
 
 ---
 
